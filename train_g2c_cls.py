@@ -372,13 +372,14 @@ def main():
                     cls_gt[cls_mask] = source_label
                     cls_out = model_clsD[i](pred_target_score)
                     loss_cls_adv += seg_loss(cls_out, cls_gt)
+                loss_cls_adv_value = loss_cls_adv.item() / args.iter_size
                     
 
             loss = args.lambda_adv_target2 * loss_adv_target2 + LAMBDA_CLS_ADV * loss_cls_adv
             loss = loss / args.iter_size
             amp_backward(loss, optimizer)
             loss_adv_target_value2 += loss_adv_target2.item() / args.iter_size
-            loss_cls_adv_value = loss_cls_adv.item() / args.iter_size
+
 
             # train D
 
