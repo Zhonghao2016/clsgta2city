@@ -257,9 +257,12 @@ def main():
         model_temp = FCDiscriminatorCLS(num_classes=args.num_classes).to(device).train()
         optimizer_temp = optim.Adam(model_temp.parameters(), lr=args.learning_rate_D, betas=(0.9, 0.99))
         optimizer_temp.zero_grad()
+        #model_temp, optimizer_temp = amp.initialize(
+        #    model_temp, optimizer_temp, opt_level="O1", 
+        #    keep_batchnorm_fp32=None, loss_scale="dynamic"
+        #)
         model_temp, optimizer_temp = amp.initialize(
-            model_temp, optimizer_temp, opt_level="O2", 
-            keep_batchnorm_fp32=True, loss_scale="dynamic"
+            model_temp, optimizer_temp, opt_level="O0"
         )
         model_clsD.append(model_temp)
         optimizer_clsD.append(optimizer_temp)
@@ -309,7 +312,7 @@ def main():
         optimizer_D2.zero_grad()
         adjust_learning_rate_D(optimizer_D2, i_iter)
 
-        if i_iter > cls_begin_iter:
+        if i_iter >= cls_begin_iter:
             for i in range(args.num_classes):
                 optimizer_clsD[i].zero_grad()
                 adjust_learning_rate_D(optimizer_clsD[i], i_iter)
@@ -322,7 +325,7 @@ def main():
             for param in model_D2.parameters():
                 param.requires_grad = False
 
-            if i_iter > cls_begin_iter:
+            if i_iter >= cls_begin_iter:
                 for i in range(args.num_classes):
                     for param in model_clsD[i].parameters():
                         param.requires_grad = False
@@ -419,7 +422,7 @@ def main():
                     if torch.sum(cls_mask) == 0:
                         continue
                     cls_gt = torch.tensor(source_pred_cls.data).long().to(device)
-                    cls_gt[1-cls_mask] = 255
+                    cls_gt[~cls_mask] = 255
                     cls_gt[cls_mask] = source_label
                     cls_out = model_clsD[i](pred_source_score)
                     loss_cls_D = seg_loss(cls_out, cls_gt) / 2
@@ -479,7 +482,7 @@ def main():
             torch.save(model.state_dict(), osp.join(args.snapshot_dir, 'GTA5_' + str(i_iter) + '.pth'))
             torch.save(model_D2.state_dict(), osp.join(args.snapshot_dir, 'GTA5_' + str(i_iter) + '_D2.pth'))
             for i in range(args.num_classes):
-                torch.save(model_clsD[i].state_dict(), osp.join(args.snapshot_dir, 'GTA5_' + str(NUM_STEPS) + '_clsD.pth'))
+                torch.save(model_clsD[i].state_dict(), osp.join(args.snapshot_dir, 'GTA5_clsD'+str(i)+'.pth'))
 
     if args.tensorboard:
         writer.close()
