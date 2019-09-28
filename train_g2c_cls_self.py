@@ -263,18 +263,20 @@ def main():
         #    keep_batchnorm_fp32=None, loss_scale="dynamic"
         #)
         model_temp, optimizer_temp = amp.initialize(
-            model_temp, optimizer_temp, opt_level="O0"
+            model_temp, optimizer_temp, opt_level="O1", 
+            keep_batchnorm_fp32=None, loss_scale="dynamic"
         )
         model_clsD.append(model_temp)
         optimizer_clsD.append(optimizer_temp)
 
     model, optimizer = amp.initialize(
-        model, optimizer, opt_level="O2", 
-        keep_batchnorm_fp32=True, loss_scale="dynamic"
+        model, optimizer, opt_level="O1", 
+        keep_batchnorm_fp32=None, loss_scale="dynamic"
     )
 
     model_D2, optimizer_D2 = amp.initialize(
-        model_D2, optimizer_D2, opt_level="O0", 
+        model_D2, optimizer_D2, opt_level="O1", 
+        keep_batchnorm_fp32=None, loss_scale="dynamic"
     )
 
     bce_loss = torch.nn.BCEWithLogitsLoss()
