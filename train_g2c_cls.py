@@ -273,8 +273,7 @@ def main():
     )
 
     model_D2, optimizer_D2 = amp.initialize(
-        model_D2, optimizer_D2, opt_level="O2", 
-        keep_batchnorm_fp32=True, loss_scale="dynamic"
+        model_D2, optimizer_D2, opt_level="O0", 
     )
 
     bce_loss = torch.nn.BCEWithLogitsLoss()
@@ -288,6 +287,14 @@ def main():
     target_label = 1
 
     cls_begin_iter = 10000
+
+    num_target_imgs = 2975
+    predicted_label = np.zeros((num_target_imgs, 1, input_size_target[1], input_size_target[0]), dtype=np.uint8)
+    predicted_prob = np.zeros((num_target_imgs, 1, input_size_target[1], input_size_target[0]), dtype=np.float16)
+    name2idxmap = {}
+    for i in range(num_target_imgs):
+        name2idxmap[cityset.files[i]['name']] = i
+    thres = []
     
     # set up tensor board
     if args.tensorboard:
@@ -355,6 +362,7 @@ def main():
             images, _, name = batch
             images = images.to(device)
             name = name[0]
+            img_idx = name2idxmap[name]
 
             _, pred_target2 = model(images)
             pred_target2 = interp_target(pred_target2)
@@ -362,16 +370,34 @@ def main():
             pred_target_score = F.softmax(pred_target2, dim=1)
             D_out2 = model_D2(pred_target_score)
             loss_adv_target2 = bce_loss(D_out2, torch.FloatTensor(D_out2.data.size()).fill_(source_label).to(device))
+
+            target_pred_prob, target_pred_cls = torch.max(pred_target_score, dim=1)
+            predicted_label[img_idx,...] = target_pred_cls.cpu().data.numpy().astype(np.uint8)
+            predicted_prob[img_idx,...] = target_pred_prob.cpu().data.numpy().astype(np.float16)
+
+            if i_iter >= cls_begin_iter and i_iter%5000 == 0:
+                thres = []
+                for i in range(args.num_classes):
+                    x = predicted_prob[predicted_label==i]
+                    if len(x) == 0:
+                        thres.append(0)
+                        continue        
+                    x = np.sort(x)
+                    thres.append(x[np.int(np.round(len(x)*0.5))])
+                print (thres)
+                thres = np.array(thres)
+                thres[thres>0.9]=0.9
+                np.save(osp.join(args.snapshot_dir, 'predicted_label'), predicted_label)
+                np.save(osp.join(args.snapshot_dir, 'predicted_prob'), predicted_prob)
             
             if i_iter >= cls_begin_iter:
-                target_pred_prob, target_pred_cls = torch.max(pred_target_score, dim=1)
                 target_pred_cls = target_pred_cls.long().detach()
                 for i in range(args.num_classes):
-                    cls_mask = target_pred_cls==i
+                    cls_mask = (target_pred_cls==i) * (target_pred_cls>=thres[i])
                     if torch.sum(cls_mask) == 0:
                         continue
                     cls_gt = torch.tensor(target_pred_cls.data).long().to(device)
-                    cls_gt[target_pred_cls!=i] = 255
+                    cls_gt[~cls_mask] = 255
                     cls_gt[cls_mask] = source_label
                     cls_out = model_clsD[i](pred_target_score)
                     loss_cls_adv += seg_loss(cls_out, cls_gt)
@@ -433,11 +459,11 @@ def main():
                 target_pred_prob, target_pred_cls = torch.max(pred_target_score, dim=1)
                 target_pred_cls = target_pred_cls.long().detach()
                 for i in range(args.num_classes):
-                    cls_mask = target_pred_cls==i
+                    cls_mask = (target_pred_cls==i) * (target_pred_cls>=thres[i])
                     if torch.sum(cls_mask) == 0:
                         continue
                     cls_gt = torch.tensor(target_pred_cls.data).long().to(device)
-                    cls_gt[target_pred_cls!=i] = 255
+                    cls_gt[~cls_mask] = 255
                     cls_gt[cls_mask] = target_label
                     cls_out = model_clsD[i](pred_target_score)
                     loss_cls_adv += seg_loss(cls_out, cls_gt)
